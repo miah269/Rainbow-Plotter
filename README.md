@@ -10,4 +10,9 @@ Plug the machine into a wall socket, disengage the emergency stop, and connect t
 
 Then follow the steps in this video:
 
-https://github.com/miah269/Rainbow-Plotter/blob/main/Rainbow-Plotter_tutorial.mp4
+
+
+
+https://github.com/user-attachments/assets/0d8db67c-4aea-4ee3-9e06-1e359e685a9c
+
+
