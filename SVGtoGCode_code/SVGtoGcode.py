@@ -59,7 +59,6 @@ auto_scale = False
 """ optimize path - slow for large files"""
 do_optimise = True
 # How closely to approximate curves, in millimetres on paper.
-# 0.25–0.5 mm is a good default for pen plotters.
 curve_flatness_mm = 0.35
 
 PENS = [
@@ -73,10 +72,13 @@ PENS = [
 
 _PROC = psutil.Process()
 
+#Gets memory size of current process
 def _rss_mib() -> float:
-    """Current process RSS in MiB."""
     return _PROC.memory_info().rss / (1024**2)
 
+#------------------------------ SVG PARSING -------------------------------------------- ##
+
+#parse style of path (colours, opacities, etc)
 def parse_inline_style(style: str):
     styles = {}
     if not style:
@@ -87,6 +89,7 @@ def parse_inline_style(style: str):
             styles[k.strip().lower()] = v.strip()
     return styles
 
+#parse colour from string to hex
 def parse_colour(s: str | None) -> str | None:
     if not s:
         return None
@@ -113,26 +116,29 @@ def parse_colour(s: str | None) -> str | None:
     }
     return basic.get(s)
 
+#convert hex colour to rgb
 def _hex_to_rgb255(hexstr: str) -> tuple[int,int,int]:
     hexstr = hexstr.lstrip('#')
     return int(hexstr[0:2],16), int(hexstr[2:4],16), int(hexstr[4:6],16)
 
+#convert rgb to hex
 def _rgb_to_hex(rgb):  # (r,g,b) -> '#rrggbb'
     return '#%02x%02x%02x' % tuple(int(v) for v in rgb)
 
+#convert rgb to lab
 def _rgb255_to_lab(rgb: tuple[int,int,int]) -> np.ndarray:
     """(0..255,0..255,0..255) -> Lab(3,) float"""
     arr = np.array(rgb, dtype=float)[None, None, :] / 255.0
     return skcolor.rgb2lab(arr)[0, 0, :]  # 3-vector
 
+#set timer for execution time stats
 def timer(t, label):
     duration = dt.now() - t
     duration = duration.total_seconds()
     print("{} took {}".format(label, duration))
     return duration
 
-
-
+#get shapes (paths) from XML in SVG
 def get_shapes(svg_text: str, use_fill_if_no_stroke: bool=False):
         t1 = dt.now()
         root = ET.fromstring(svg_text)
@@ -301,6 +307,7 @@ def get_shapes(svg_text: str, use_fill_if_no_stroke: bool=False):
         timer(t1, "parsing gcode")
         return shapes
 
+#convert paths to polylines (sets of points)
 def path_to_polyline(d: str, mat, flatness_user: float):
     if not d:
         return []
@@ -339,8 +346,7 @@ def path_to_polyline(d: str, mat, flatness_user: float):
                 tol *= 2.0
     return polylines
 
-
-
+#Scale shapes to fit in the target size
 def scale_shapes(shapes, target_w_mm, target_h_mm, margin_mm=0.0, invert_y=True):
     if not shapes:
         return []
@@ -374,6 +380,7 @@ def scale_shapes(shapes, target_w_mm, target_h_mm, margin_mm=0.0, invert_y=True)
         out.append({'coords': new_poly, 'stroke': poly['stroke']})
     return out
 
+#Assign each shape to closest colour in PENS
 def assign_to_pens(shapes, pens=PENS, tolerance=100.0):
     #pens in lab space
     pen_labs = []
@@ -383,7 +390,6 @@ def assign_to_pens(shapes, pens=PENS, tolerance=100.0):
 
     by_pen = {p['tool']: [] for p in pens}
     unmapped = []
-
     lab_cache = {}
 
     #assign shapes to pens
@@ -429,15 +435,18 @@ def optimise_per_pen(by_pen: dict) -> dict:
         out[tool] = new_order
     return out
 
+#Generate G-code string for a move
 def g_string(x, y, prefix="G1", p=3):
     return f"{prefix} X{x:.{p}f} Y{y:.{p}f}"
     
+#Generate pen up/down commands    
 def pen_up_down(z_up=True):
     if z_up:
         return f"M3 S{zTravel}"
     else:
         return f"M3 S{zDraw}"
     
+#Convert shapes to G-code commands    
 def shapes_2_gcode(by_pen: dict, pens=PENS, feed_rate=1000):
     t1 = dt.now()
     try:
@@ -481,10 +490,12 @@ def shapes_2_gcode(by_pen: dict, pens=PENS, feed_rate=1000):
     timer(t1, "shapes_2_gcode   ")
     return commands
 
+#------------------------------ MAIN CONVERSION FUNCTION -------------------------------------------- ##
 
 def _secs(t0): 
     return (dt.now() - t0).total_seconds()
 
+#Convert SVG text to G-code (full pipeline)
 def image_to_gcode(
     svg_text: str,
     height_mm: float = 60,
@@ -586,7 +597,6 @@ class App(tk.Tk):
         add_row("Width (mm)", ttk.Entry(params, textvariable=self.var_width))
         add_row("Feed XY (mm/min)", ttk.Entry(params, textvariable=self.var_feed))
         
-
         row += 1
         btn_grbl = ttk.Button(params, text="Open GRBL Plotter", command=self.open_grbl)
         btn_grbl.grid(row=row, column=0, columnspan=2, sticky="ew", padx=6, pady=10)
